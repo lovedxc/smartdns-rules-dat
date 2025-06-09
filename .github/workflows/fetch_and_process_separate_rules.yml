@@ -6,6 +6,9 @@ on:
     - cron: '0 3 * * *'
   workflow_dispatch: # 允许手动触发
 
+permissions: # <--- ADD THIS BLOCK
+  contents: write # Allows the GITHUB_TOKEN to write to the repository contents (push commits)
+
 jobs:
   fetch_and_process:
     runs-on: ubuntu-latest
@@ -13,6 +16,7 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4 # 检出你自己的仓库，以便提交结果
+        # No need to explicitly pass token here if permissions are set globally/job-level
 
       - name: Fetch and process rules
         id: process_rules # 给这个步骤一个id，方便后续步骤引用其输出（如果需要）
@@ -118,5 +122,5 @@ jobs:
             git push
           fi
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # This is good practice but often redundant if permissions are set correctly
           # FILES_TO_COMMIT_LIST 将由上一步通过 GITHUB_ENV 注入
