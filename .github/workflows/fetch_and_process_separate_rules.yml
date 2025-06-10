@@ -44,7 +44,8 @@ jobs:
             # -S: 如果同时使用 -s，则在 stderr 上显示错误
             # -L: 跟随重定向
             if ! curl -fsSL "${url}" | \
-                sed 's/\r$//' | \ # 新增：移除可能存在的CR，将CRLF转为LF
+                # 新增：移除可能存在的CR，将CRLF转为LF
+                sed 's/\r$//' | \
                 sed 's/^full://' | \
                 grep -v '^regexp:' > "${tmp_processed_file}"; then
               echo "警告: 下载或处理 ${url} 失败。跳过此源。"
