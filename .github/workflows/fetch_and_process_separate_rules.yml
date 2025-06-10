@@ -21,37 +21,43 @@ jobs:
         id: process_rules
         run: |
           # 定义输入URL和它们对应的输出文件名
-          # 使用Bash关联数组 (declare -A)
           declare -A RULE_SOURCES
           RULE_SOURCES["https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/proxy-list.txt"]="smartdns_proxy_rules.txt"
           RULE_SOURCES["https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/direct-list.txt"]="smartdns_direct_rules.txt"
-          # 如果有更多源，可以继续添加:
-          # RULE_SOURCES["ANOTHER_URL"]="another_output.txt"
 
-          # 存储实际被处理并可能发生更改的文件名
           PROCESSED_OUTPUT_FILES=()
+          DOMAIN_TO_FORCE_DIRECT="services.googleapis.cn" # 定义要特殊处理的域名
 
           for url in "${!RULE_SOURCES[@]}"; do
             output_filename="${RULE_SOURCES[$url]}"
-            tmp_processed_file="tmp_${output_filename}" # 临时文件用于处理
+            tmp_processed_file="tmp_${output_filename}"
 
             echo "Processing: ${url}  -> ${output_filename}"
 
             # 下载文件内容，去除 "full:"，并且删除以 "regexp:" 开头的行
-            # 使用 curl -fsSL:
-            # -f: 服务器错误时静默失败 (对 'if !' 检查很重要)
-            # -s: 静默模式
-            # -S: 如果同时使用 -s，则在 stderr 上显示错误
-            # -L: 跟随重定向
             if ! curl -fsSL "${url}" | \
                 sed 's/^full://' | \
                 grep -v '^regexp:' > "${tmp_processed_file}"; then
               echo "警告: 下载或处理 ${url} 失败。跳过此源。"
-              rm -f "${tmp_processed_file}" # 清理不完整的临时文件
-              continue # 继续处理下一个URL
+              rm -f "${tmp_processed_file}"
+              continue
             fi
 
-            # 如果下载和初步处理成功，且临时文件非空，则进行排序去重
+            # --- 开始自定义规则调整 ---
+            if [ "${output_filename}" == "smartdns_proxy_rules.txt" ]; then
+              echo "从 ${output_filename} (临时文件 ${tmp_processed_file}) 中移除 ${DOMAIN_TO_FORCE_DIRECT} ..."
+              # 使用 grep -v 和临时文件来安全地移除行
+              grep -v "^${DOMAIN_TO_FORCE_DIRECT}$" "${tmp_processed_file}" > "${tmp_processed_file}.mod"
+              mv "${tmp_processed_file}.mod" "${tmp_processed_file}"
+            fi
+
+            if [ "${output_filename}" == "smartdns_direct_rules.txt" ]; then
+              echo "确保 ${DOMAIN_TO_FORCE_DIRECT} 在 ${output_filename} (临时文件 ${tmp_processed_file}) 中..."
+              # 追加域名，后续的 sort -u 会处理重复项
+              echo "${DOMAIN_TO_FORCE_DIRECT}" >> "${tmp_processed_file}"
+            fi
+            # --- 结束自定义规则调整 ---
+
             if [ -s "${tmp_processed_file}" ]; then
               sort -u "${tmp_processed_file}" > "${output_filename}"
               echo "处理后的规则已保存到 ${output_filename}"
@@ -59,20 +65,13 @@ jobs:
               PROCESSED_OUTPUT_FILES+=("${output_filename}")
             else
               echo "警告: ${url} 的内容在处理后为空文件。${output_filename} 不会从此源创建或更新。"
-              # 如果你希望即使源为空也创建一个空的输出文件，取消下面这行的注释
-              # > "${output_filename}"
-              # PROCESSED_OUTPUT_FILES+=("${output_filename}") # 如果创建空文件也算作“已处理”
             fi
 
-            # 清理临时文件
             rm -f "${tmp_processed_file}"
           done
 
-          # 将成功处理并生成（或更新）的文件名列表传递给 GITHUB_ENV
-          # 这样下一步就可以知道哪些文件需要被添加到git
           if [ ${#PROCESSED_OUTPUT_FILES[@]} -gt 0 ]; then
             echo "成功处理的文件: ${PROCESSED_OUTPUT_FILES[*]}"
-            # 将数组转换为一个空格分隔的字符串
             echo "FILES_TO_COMMIT_LIST=${PROCESSED_OUTPUT_FILES[*]}" >> $GITHUB_ENV
           else
             echo "没有文件被成功处理或更新。"
@@ -83,23 +82,18 @@ jobs:
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
-
-          # 从 GITHUB_ENV 获取上一步生成的文件列表
-          # FILES_TO_COMMIT_LIST 变量现在包含了所有实际被处理过的文件名
           
           if [ -z "$FILES_TO_COMMIT_LIST" ]; then
             echo "上一步没有处理任何文件。无需提交。"
             exit 0
           fi
 
-          # 将字符串转换回 Bash 数组
           IFS=' ' read -r -a files_to_stage <<< "$FILES_TO_COMMIT_LIST"
-
           echo "待检查暂存的文件: ${files_to_stage[*]}"
           
           added_any_file=false
           for file in "${files_to_stage[@]}"; do
-            if [ -f "$file" ]; then # 确保文件存在
+            if [ -f "$file" ]; then
               git add "$file"
               echo "已将 $file 添加到暂存区。"
               added_any_file=true
@@ -109,11 +103,10 @@ jobs:
           done
 
           if ! $added_any_file; then
-            echo "没有文件实际被添加到暂存区 (例如，所有源都失败了，或者对现有的空文件没有更改)。"
+            echo "没有文件实际被添加到暂存区。"
             exit 0
           fi
           
-          # 检查是否有暂存的更改
           if git diff --staged --quiet; then
             echo "暂存的文件中没有实际更改需要提交。"
           else
@@ -124,4 +117,3 @@ jobs:
           fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # FILES_TO_COMMIT_LIST 将由上一步通过 GITHUB_ENV 注入
