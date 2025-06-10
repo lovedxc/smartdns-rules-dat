@@ -25,91 +25,74 @@ jobs:
           RULE_SOURCES["https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/direct-list.txt"]="smartdns_direct_rules.txt"
 
           PROCESSED_OUTPUT_FILES=()
-          DOMAIN_TO_FORCE_DIRECT="services.googleapis.cn"
+          DOMAIN_TO_MANAGE="services.googleapis.cn"
+          # Для grep -E, точка в домене должна быть экранирована.
+          # И мы хотим точное совпадение строки для этого домена.
+          DOMAIN_TO_EXCLUDE_PATTERN="^$(echo ${DOMAIN_TO_MANAGE} | sed 's/\./\\./g')$" # -> ^services\.googleapis\.cn$
 
-          echo "DEBUG: The domain we are trying to manage is: '${DOMAIN_TO_FORCE_DIRECT}'"
-          echo "DEBUG: The domain variable with cat -vet: "
-          echo "${DOMAIN_TO_FORCE_DIRECT}" | cat -vet
+          echo "DEBUG: Domain to manage: '${DOMAIN_TO_MANAGE}'"
+          echo "DEBUG: Exclusion pattern for proxy list grep -vE: '${DOMAIN_TO_EXCLUDE_PATTERN}'"
+
 
           for url in "${!RULE_SOURCES[@]}"; do
             output_filename="${RULE_SOURCES[$url]}"
-            tmp_processed_file="tmp_final_${output_filename}" # Final temp file before sort
-            intermediate_debug_file="tmp_intermediate_debug_${output_filename}" # For proxy list debugging
+            tmp_processed_file="tmp_final_processed_${output_filename}"
 
             echo "Processing: ${url}  -> ${output_filename}"
 
-            # 初始的通用处理阶段: 下载 -> CRLF转LF -> 修剪行首尾空格 -> 去full: -> 去regexp:
-            # 这个结果将用于进一步操作或直接成为 tmp_processed_file 的基础
-            
-            # 创建一个临时的管道输出文件，用于所有初始处理步骤
-            initial_stream_output_tmp="tmp_initial_stream_${output_filename}"
-
-            if ! curl -fsSL "${url}" | \
-                sed 's/\r$//' | \
-                sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | \
-                sed 's/^full://' | \
-                grep -v '^regexp:' > "${initial_stream_output_tmp}"; then
-              echo "警告: 下载或通用处理 ${url} 失败。跳过此源。"
-              rm -f "${initial_stream_output_tmp}"
-              continue
-            fi
-
-            # 根据文件名进行特定处理
+            # 根据输出文件名决定处理流程
             if [ "${output_filename}" == "smartdns_proxy_rules.txt" ]; then
-              echo "DEBUG PROXY: Starting specific processing for ${output_filename}"
-              
-              # 复制 initial_stream_output_tmp 到 intermediate_debug_file 以便检查
-              cp "${initial_stream_output_tmp}" "${intermediate_debug_file}"
-
-              echo "DEBUG PROXY: Content of '${intermediate_debug_file}' (lines with '${DOMAIN_TO_FORCE_DIRECT}') BEFORE targeted removal (top 10 matches, cat -vet):"
-              if grep -F "${DOMAIN_TO_FORCE_DIRECT}" "${intermediate_debug_file}"; then
-                grep -F "${DOMAIN_TO_FORCE_DIRECT}" "${intermediate_debug_file}" | cat -vet | head -n 10
-              else
-                echo "DEBUG PROXY: '${DOMAIN_TO_FORCE_DIRECT}' not found as substring in '${intermediate_debug_file}'."
+              echo "DEBUG PROXY: Applying proxy-specific filtering: removing full:, regexp:, and ${DOMAIN_TO_MANAGE}"
+              # 代理列表：下载 -> 转行尾 -> 修剪空格 -> 一次性 grep -vE 排除多个模式
+              if ! curl -fsSL "${url}" | \
+                  sed 's/\r$//' | \
+                  sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | \
+                  grep -vE "(^full:|^regexp:|${DOMAIN_TO_EXCLUDE_PATTERN})" > "${tmp_processed_file}"; then
+                echo "警告: 下载或处理 ${url} (proxy-specific) 失败。跳过此源。"
+                rm -f "${tmp_processed_file}"
+                continue
               fi
-              
-              echo "DEBUG PROXY: Attempting: grep -vF \"^${DOMAIN_TO_FORCE_DIRECT}$\" \"${intermediate_debug_file}\" > \"${tmp_processed_file}\""
-              grep -vF "^${DOMAIN_TO_FORCE_DIRECT}$" "${intermediate_debug_file}" > "${tmp_processed_file}"
-              # 检查 grep 的退出状态 (0=匹配并操作, 1=未找到匹配行所以未操作, >1=错误)
-              grep_exit_status=$?
-              echo "DEBUG PROXY: Exit status of grep -vF command: ${grep_exit_status}"
-
-
-              echo "DEBUG PROXY: Content of '${tmp_processed_file}' (lines with '${DOMAIN_TO_FORCE_DIRECT}') AFTER targeted removal (top 10 matches, cat -vet):"
-              if grep -F "${DOMAIN_TO_FORCE_DIRECT}" "${tmp_processed_file}"; then
-                echo "ERROR PROXY: '${DOMAIN_TO_FORCE_DIRECT}' IS STILL FOUND in '${tmp_processed_file}'."
-                grep -F "${DOMAIN_TO_FORCE_DIRECT}" "${tmp_processed_file}" | cat -vet | head -n 10
+              # 调试：检查域名是否真的被移除了
+              echo "DEBUG PROXY: Checking if '${DOMAIN_TO_MANAGE}' is still in '${tmp_processed_file}' after grep -vE:"
+              if grep -qF "${DOMAIN_TO_MANAGE}" "${tmp_processed_file}"; then
+                  echo "ERROR PROXY: '${DOMAIN_TO_MANAGE}' IS STILL FOUND in '${tmp_processed_file}' after grep -vE!"
+                  grep -F "${DOMAIN_TO_MANAGE}" "${tmp_processed_file}" | cat -vet | head -n 5
               else
-                echo "DEBUG PROXY: '${DOMAIN_TO_FORCE_DIRECT}' NOT found as substring in '${tmp_processed_file}'. Removal likely successful or it was not there after initial processing."
+                  echo "DEBUG PROXY: '${DOMAIN_TO_MANAGE}' NOT found in '${tmp_processed_file}' after grep -vE. (This is good)"
               fi
-              rm -f "${intermediate_debug_file}"
 
-            elif [ "${output_filename}" == "smartdns_direct_rules.txt" ]; then
-              echo "DEBUG DIRECT: Starting specific processing for ${output_filename}"
-              # 对于直连列表，直接使用初始处理的结果，然后追加域名
-              cp "${initial_stream_output_tmp}" "${tmp_processed_file}" # 使用初始处理的结果
-              
-              echo "DEBUG DIRECT: Appending '${DOMAIN_TO_FORCE_DIRECT}' to '${tmp_processed_file}'."
-              echo "${DOMAIN_TO_FORCE_DIRECT}" >> "${tmp_processed_file}"
-            else
-              # 对于其他任何文件，直接使用初始处理的结果
-              cp "${initial_stream_output_tmp}" "${tmp_processed_file}"
+            else # smartdns_direct_rules.txt (或其他未来可能添加的列表)
+              echo "DEBUG OTHER: Applying general filtering for ${output_filename}"
+              # 直连列表：下载 -> 转行尾 -> 修剪空格 -> 去full: -> 去regexp:
+              if ! curl -fsSL "${url}" | \
+                  sed 's/\r$//' | \
+                  sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | \
+                  sed 's/^full://' | \
+                  grep -v '^regexp:' > "${tmp_processed_file}"; then
+                echo "警告: 下载或处理 ${url} 失败。跳过此源。"
+                rm -f "${tmp_processed_file}"
+                continue
+              fi
+
+              # 如果是直连列表，确保特定域名存在 (追加到临时文件)
+              if [ "${output_filename}" == "smartdns_direct_rules.txt" ]; then
+                echo "DEBUG DIRECT: Ensuring ${DOMAIN_TO_MANAGE} is in ${tmp_processed_file} (for direct list)..."
+                echo "${DOMAIN_TO_MANAGE}" >> "${tmp_processed_file}"
+                echo "DEBUG DIRECT: Appended '${DOMAIN_TO_MANAGE}' to '${tmp_processed_file}'."
+              fi
             fi
             
-            rm -f "${initial_stream_output_tmp}" # 清理初始管道输出文件
-
             # 统一处理：排序去重并保存 (只对存在且非空的 tmp_processed_file 操作)
             if [ -f "${tmp_processed_file}" ] && [ -s "${tmp_processed_file}" ]; then
               sort -u "${tmp_processed_file}" > "${output_filename}"
               echo "处理后的规则已保存到 ${output_filename}"
               echo "${output_filename} 中的总行数: $(wc -l < ${output_filename})"
               PROCESSED_OUTPUT_FILES+=("${output_filename}")
-            elif [ -f "${tmp_processed_file}" ]; then # 文件存在但是是空的
+            elif [ -f "${tmp_processed_file}" ]; then
               echo "警告: ${tmp_processed_file} 在排序前为空。 ${output_filename} 将为空。"
-              # 创建一个空的输出文件
-              > "${output_filename}"
+              > "${output_filename}" # 创建一个空的输出文件
               PROCESSED_OUTPUT_FILES+=("${output_filename}")
-            else # tmp_processed_file 根本没创建（例如，初始下载失败后跳过了）
+            else
               echo "警告: ${tmp_processed_file} 未创建。 ${output_filename} 不会更新。"
             fi
 
