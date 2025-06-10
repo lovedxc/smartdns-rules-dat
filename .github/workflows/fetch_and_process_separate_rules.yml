@@ -15,88 +15,114 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4 # 检出你自己的仓库，以便提交结果
 
       - name: Fetch and process rules
         id: process_rules
         run: |
+          # 定义输入URL和它们对应的输出文件名
           declare -A RULE_SOURCES
           RULE_SOURCES["https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/proxy-list.txt"]="smartdns_proxy_rules.txt"
           RULE_SOURCES["https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/direct-list.txt"]="smartdns_direct_rules.txt"
 
           PROCESSED_OUTPUT_FILES=()
-          DOMAIN_TO_MANAGE="services.googleapis.cn"
-          # Для grep -E, точка в домене должна быть экранирована.
-          # И мы хотим точное совпадение строки для этого домена.
-          DOMAIN_TO_EXCLUDE_PATTERN="^$(echo ${DOMAIN_TO_MANAGE} | sed 's/\./\\./g')$" # -> ^services\.googleapis\.cn$
-
-          echo "DEBUG: Domain to manage: '${DOMAIN_TO_MANAGE}'"
-          echo "DEBUG: Exclusion pattern for proxy list grep -vE: '${DOMAIN_TO_EXCLUDE_PATTERN}'"
-
+          DOMAIN_TO_FORCE_DIRECT_LOWERCASE="services.googleapis.cn" # 确保我们的目标是小写
 
           for url in "${!RULE_SOURCES[@]}"; do
             output_filename="${RULE_SOURCES[$url]}"
-            tmp_processed_file="tmp_final_processed_${output_filename}"
+            tmp_processed_file="tmp_${output_filename}"
+            tmp_debug_file_before_delete="tmp_debug_before_delete_${output_filename}"
+            tmp_debug_file_after_delete="tmp_debug_after_delete_${output_filename}"
 
             echo "Processing: ${url}  -> ${output_filename}"
 
-            # 根据输出文件名决定处理流程
-            if [ "${output_filename}" == "smartdns_proxy_rules.txt" ]; then
-              echo "DEBUG PROXY: Applying proxy-specific filtering: removing full:, regexp:, and ${DOMAIN_TO_MANAGE}"
-              # 代理列表：下载 -> 转行尾 -> 修剪空格 -> 一次性 grep -vE 排除多个模式
-              if ! curl -fsSL "${url}" | \
-                  sed 's/\r$//' | \
-                  sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | \
-                  grep -vE "(^full:|^regexp:|${DOMAIN_TO_EXCLUDE_PATTERN})" > "${tmp_processed_file}"; then
-                echo "警告: 下载或处理 ${url} (proxy-specific) 失败。跳过此源。"
-                rm -f "${tmp_processed_file}"
-                continue
-              fi
-              # 调试：检查域名是否真的被移除了
-              echo "DEBUG PROXY: Checking if '${DOMAIN_TO_MANAGE}' is still in '${tmp_processed_file}' after grep -vE:"
-              if grep -qF "${DOMAIN_TO_MANAGE}" "${tmp_processed_file}"; then
-                  echo "ERROR PROXY: '${DOMAIN_TO_MANAGE}' IS STILL FOUND in '${tmp_processed_file}' after grep -vE!"
-                  grep -F "${DOMAIN_TO_MANAGE}" "${tmp_processed_file}" | cat -vet | head -n 5
-              else
-                  echo "DEBUG PROXY: '${DOMAIN_TO_MANAGE}' NOT found in '${tmp_processed_file}' after grep -vE. (This is good)"
-              fi
-
-            else # smartdns_direct_rules.txt (或其他未来可能添加的列表)
-              echo "DEBUG OTHER: Applying general filtering for ${output_filename}"
-              # 直连列表：下载 -> 转行尾 -> 修剪空格 -> 去full: -> 去regexp:
-              if ! curl -fsSL "${url}" | \
-                  sed 's/\r$//' | \
-                  sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | \
-                  sed 's/^full://' | \
-                  grep -v '^regexp:' > "${tmp_processed_file}"; then
-                echo "警告: 下载或处理 ${url} 失败。跳过此源。"
-                rm -f "${tmp_processed_file}"
-                continue
-              fi
-
-              # 如果是直连列表，确保特定域名存在 (追加到临时文件)
-              if [ "${output_filename}" == "smartdns_direct_rules.txt" ]; then
-                echo "DEBUG DIRECT: Ensuring ${DOMAIN_TO_MANAGE} is in ${tmp_processed_file} (for direct list)..."
-                echo "${DOMAIN_TO_MANAGE}" >> "${tmp_processed_file}"
-                echo "DEBUG DIRECT: Appended '${DOMAIN_TO_MANAGE}' to '${tmp_processed_file}'."
-              fi
+            # 初始下载和通用处理
+            # 下载 -> 转行尾 -> 去full: -> 去regexp:
+            # 注意：这里的空格修剪暂时移到后面，让 sed 自己处理
+            if ! curl -fsSL "${url}" | \
+                sed 's/\r$//' | \
+                sed 's/^full://' | \
+                grep -v '^regexp:' > "${tmp_processed_file}"; then
+              echo "警告: 下载或初步处理 ${url} 失败。跳过此源。"
+              rm -f "${tmp_processed_file}"
+              continue
             fi
             
-            # 统一处理：排序去重并保存 (只对存在且非空的 tmp_processed_file 操作)
-            if [ -f "${tmp_processed_file}" ] && [ -s "${tmp_processed_file}" ]; then
-              sort -u "${tmp_processed_file}" > "${output_filename}"
+            # 复制一份用于调试，看看删除前是什么样子
+            cp "${tmp_processed_file}" "${tmp_debug_file_before_delete}"
+
+            # 特定文件处理
+            if [ "${output_filename}" == "smartdns_proxy_rules.txt" ]; then
+              echo "DEBUG PROXY: Attempting to remove '${DOMAIN_TO_FORCE_DIRECT_LOWERCASE}' from '${tmp_processed_file}' using robust sed."
+              # 使用 sed 进行更灵活的删除：
+              # 1. 's/^[[:space:]]*//;s/[[:space:]]*$//' : 先去除行首尾标准空格
+              # 2. 然后对于包含目标域名的行 (忽略大小写，且允许域名本身前后有更多非标准空格)，删除整行
+              #    为了让 DOMAIN_TO_FORCE_DIRECT_LOWERCASE 中的 '.' 不被sed正则解释为任意字符，我们需要转义它。
+              DOMAIN_SED_ESCAPED=$(echo "${DOMAIN_TO_FORCE_DIRECT_LOWERCASE}" | sed 's/\./\\./g')
+              
+              # 创建一个临时文件来保存 sed 的结果
+              sed_output_tmp="${tmp_processed_file}.sed_out"
+
+              # sed 命令解释：
+              # 1. `s/^[[:space:]]*//;s/[[:space:]]*$//`: 修剪标准空格
+              # 2. `t next_command`: 如果上一个s命令有替换，则跳转到 :next_command (相当于对修剪后的行进行后续操作)
+              # 3. `b`: 如果没有替换 (行本身就是修剪过的)，也继续
+              # 4. `:next_command`
+              # 5. `/${DOMAIN_SED_ESCAPED}/Id`: I表示忽略大小写匹配，d表示删除包含该模式的行。
+              #    更稳妥的方式是分两步：先修剪所有行，再对修剪后的结果执行删除。
+              
+              # 方案A: 分步 sed (更清晰)
+              mv "${tmp_processed_file}" "${tmp_processed_file}.orig"
+              sed 's/^[[:space:]]*//;s/[[:space:]]*$//' "${tmp_processed_file}.orig" > "${tmp_processed_file}" # 修剪
+              rm "${tmp_processed_file}.orig"
+              
+              mv "${tmp_processed_file}" "${tmp_processed_file}.trimmed"
+              sed "/${DOMAIN_SED_ESCAPED}/Id" "${tmp_processed_file}.trimmed" > "${tmp_processed_file}" # 删除
+              rm "${tmp_processed_file}.trimmed"
+
+
+              # 调试：检查删除后域名是否还存在
+              cp "${tmp_processed_file}" "${tmp_debug_file_after_delete}"
+              if grep -iF "${DOMAIN_TO_FORCE_DIRECT_LOWERCASE}" "${tmp_processed_file}"; then
+                echo "ERROR PROXY: '${DOMAIN_TO_FORCE_DIRECT_LOWERCASE}' STILL FOUND after robust sed removal in '${tmp_processed_file}'."
+                echo "DEBUG PROXY: Content of '${tmp_debug_file_before_delete}' (cat -vet, lines with domain):"
+                grep -iF "${DOMAIN_TO_FORCE_DIRECT_LOWERCASE}" "${tmp_debug_file_before_delete}" | cat -vet | head
+                echo "DEBUG PROXY: Content of '${tmp_debug_file_after_delete}' (cat -vet, lines with domain):"
+                grep -iF "${DOMAIN_TO_FORCE_DIRECT_LOWERCASE}" "${tmp_debug_file_after_delete}" | cat -vet | head
+              else
+                echo "DEBUG PROXY: '${DOMAIN_TO_FORCE_DIRECT_LOWERCASE}' successfully removed by robust sed from '${tmp_processed_file}'."
+              fi
+            fi
+
+            if [ "${output_filename}" == "smartdns_direct_rules.txt" ]; then
+              echo "Ensuring ${DOMAIN_TO_FORCE_DIRECT_LOWERCASE} is in ${tmp_processed_file} (for direct list)..."
+              # 先修剪，再添加，避免添加带空格的域名
+              mv "${tmp_processed_file}" "${tmp_processed_file}.orig"
+              sed 's/^[[:space:]]*//;s/[[:space:]]*$//' "${tmp_processed_file}.orig" > "${tmp_processed_file}"
+              rm "${tmp_processed_file}.orig"
+              
+              echo "${DOMAIN_TO_FORCE_DIRECT_LOWERCASE}" >> "${tmp_processed_file}"
+              echo "DEBUG DIRECT: Appended '${DOMAIN_TO_FORCE_DIRECT_LOWERCASE}' to '${tmp_processed_file}'."
+            fi
+            
+            # 清理空行并排序去重
+            if [ -s "${tmp_processed_file}" ]; then
+              mv "${tmp_processed_file}" "${tmp_processed_file}.presort"
+              # 再次修剪并去除结果中的空行，然后排序去重
+              sed 's/^[[:space:]]*//;s/[[:space:]]*$//' "${tmp_processed_file}.presort" | grep -v '^$' | sort -u > "${output_filename}"
+              rm "${tmp_processed_file}.presort"
+              
               echo "处理后的规则已保存到 ${output_filename}"
               echo "${output_filename} 中的总行数: $(wc -l < ${output_filename})"
               PROCESSED_OUTPUT_FILES+=("${output_filename}")
-            elif [ -f "${tmp_processed_file}" ]; then
-              echo "警告: ${tmp_processed_file} 在排序前为空。 ${output_filename} 将为空。"
-              > "${output_filename}" # 创建一个空的输出文件
-              PROCESSED_OUTPUT_FILES+=("${output_filename}")
             else
-              echo "警告: ${tmp_processed_file} 未创建。 ${output_filename} 不会更新。"
+              echo "警告: ${tmp_processed_file} 在排序前为空。可能导致 ${output_filename} 为空或未更新。"
+              # 如果希望即使是空的也创建文件
+              # > "${output_filename}"
+              # PROCESSED_OUTPUT_FILES+=("${output_filename}")
             fi
 
-            rm -f "${tmp_processed_file}" # 清理最终的临时文件
+            rm -f "${tmp_processed_file}" "${tmp_debug_file_before_delete}" "${tmp_debug_file_after_delete}"
           done
 
           if [ ${#PROCESSED_OUTPUT_FILES[@]} -gt 0 ]; then
@@ -108,6 +134,7 @@ jobs:
           fi
 
       - name: Commit and push changes
+        # ... (Commit and push changes job 不变，和之前一样)
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
