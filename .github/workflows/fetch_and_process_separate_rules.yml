@@ -24,40 +24,72 @@ jobs:
           declare -A RULE_SOURCES
           RULE_SOURCES["https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/proxy-list.txt"]="smartdns_proxy_rules.txt"
           RULE_SOURCES["https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/direct-list.txt"]="smartdns_direct_rules.txt"
+          # 如果有更多源，可以继续添加:
+          # RULE_SOURCES["ANOTHER_URL"]="another_output.txt"
 
+          # 存储实际被处理并可能发生更改的文件名
           PROCESSED_OUTPUT_FILES=()
           DOMAIN_TO_FORCE_DIRECT="services.googleapis.cn" # 定义要特殊处理的域名
 
           for url in "${!RULE_SOURCES[@]}"; do
             output_filename="${RULE_SOURCES[$url]}"
-            tmp_processed_file="tmp_${output_filename}"
+            tmp_processed_file="tmp_${output_filename}" # 临时文件用于处理
 
             echo "Processing: ${url}  -> ${output_filename}"
 
-            # 下载文件内容，去除 "full:"，并且删除以 "regexp:" 开头的行
+            # 下载文件内容，移除CR (回车符)，去除 "full:"，并且删除以 "regexp:" 开头的行
+            # 使用 curl -fsSL:
+            # -f: 服务器错误时静默失败 (对 'if !' 检查很重要)
+            # -s: 静默模式
+            # -S: 如果同时使用 -s，则在 stderr 上显示错误
+            # -L: 跟随重定向
             if ! curl -fsSL "${url}" | \
+                sed 's/\r$//' | \ # 新增：移除可能存在的CR，将CRLF转为LF
                 sed 's/^full://' | \
                 grep -v '^regexp:' > "${tmp_processed_file}"; then
               echo "警告: 下载或处理 ${url} 失败。跳过此源。"
-              rm -f "${tmp_processed_file}"
-              continue
+              rm -f "${tmp_processed_file}" # 清理不完整的临时文件
+              continue # 继续处理下一个URL
+            fi
+
+            # DEBUG: 检查特定域名在初步处理后是否存在
+            echo "DEBUG: Checking for '${DOMAIN_TO_FORCE_DIRECT}' in '${tmp_processed_file}' after initial download & sed/grep processing:"
+            if grep -qF "^${DOMAIN_TO_FORCE_DIRECT}$" "${tmp_processed_file}"; then
+              echo "DEBUG: '${DOMAIN_TO_FORCE_DIRECT}' IS FOUND in '${tmp_processed_file}' before custom logic."
+            else
+              echo "DEBUG: '${DOMAIN_TO_FORCE_DIRECT}' IS NOT FOUND in '${tmp_processed_file}' before custom logic. This might be an issue if it's expected."
             fi
 
             # --- 开始自定义规则调整 ---
             if [ "${output_filename}" == "smartdns_proxy_rules.txt" ]; then
-              echo "从 ${output_filename} (临时文件 ${tmp_processed_file}) 中移除 ${DOMAIN_TO_FORCE_DIRECT} ..."
-              # 使用 grep -v 和临时文件来安全地移除行
-              grep -v "^${DOMAIN_TO_FORCE_DIRECT}$" "${tmp_processed_file}" > "${tmp_processed_file}.mod"
+              echo "Attempting to remove '${DOMAIN_TO_FORCE_DIRECT}' from '${tmp_processed_file}' (for proxy list)..."
+              lines_before_removal=$(wc -l < "${tmp_processed_file}")
+              
+              grep -vF "^${DOMAIN_TO_FORCE_DIRECT}$" "${tmp_processed_file}" > "${tmp_processed_file}.mod"
               mv "${tmp_processed_file}.mod" "${tmp_processed_file}"
+              
+              lines_after_removal=$(wc -l < "${tmp_processed_file}")
+              echo "DEBUG: Lines in '${tmp_processed_file}' for proxy. Before removal: ${lines_before_removal}. After removal attempt: ${lines_after_removal}."
+
+              if grep -qF "^${DOMAIN_TO_FORCE_DIRECT}$" "${tmp_processed_file}"; then
+                echo "ERROR: '${DOMAIN_TO_FORCE_DIRECT}' IS STILL FOUND in '${tmp_processed_file}' after removal attempt for proxy list! Please check logs and file contents."
+              else
+                echo "DEBUG: '${DOMAIN_TO_FORCE_DIRECT}' successfully removed or was not present after removal attempt in '${tmp_processed_file}' for proxy list."
+              fi
             fi
 
             if [ "${output_filename}" == "smartdns_direct_rules.txt" ]; then
-              echo "确保 ${DOMAIN_TO_FORCE_DIRECT} 在 ${output_filename} (临时文件 ${tmp_processed_file}) 中..."
-              # 追加域名，后续的 sort -u 会处理重复项
-              echo "${DOMAIN_TO_FORCE_DIRECT}" >> "${tmp_processed_file}"
+              echo "Ensuring '${DOMAIN_TO_FORCE_DIRECT}' is in '${tmp_processed_file}' (for direct list)..."
+              if ! grep -qF "^${DOMAIN_TO_FORCE_DIRECT}$" "${tmp_processed_file}"; then
+                echo "${DOMAIN_TO_FORCE_DIRECT}" >> "${tmp_processed_file}"
+                echo "DEBUG: Added '${DOMAIN_TO_FORCE_DIRECT}' to '${tmp_processed_file}' for direct list."
+              else
+                echo "DEBUG: '${DOMAIN_TO_FORCE_DIRECT}' was already present in '${tmp_processed_file}' for direct list (before sort -u)."
+              fi
             fi
             # --- 结束自定义规则调整 ---
 
+            # 如果下载和初步处理成功，且临时文件非空，则进行排序去重
             if [ -s "${tmp_processed_file}" ]; then
               sort -u "${tmp_processed_file}" > "${output_filename}"
               echo "处理后的规则已保存到 ${output_filename}"
@@ -67,11 +99,14 @@ jobs:
               echo "警告: ${url} 的内容在处理后为空文件。${output_filename} 不会从此源创建或更新。"
             fi
 
+            # 清理临时文件
             rm -f "${tmp_processed_file}"
           done
 
+          # 将成功处理并生成（或更新）的文件名列表传递给 GITHUB_ENV
           if [ ${#PROCESSED_OUTPUT_FILES[@]} -gt 0 ]; then
             echo "成功处理的文件: ${PROCESSED_OUTPUT_FILES[*]}"
+            # 将数组转换为一个空格分隔的字符串
             echo "FILES_TO_COMMIT_LIST=${PROCESSED_OUTPUT_FILES[*]}" >> $GITHUB_ENV
           else
             echo "没有文件被成功处理或更新。"
@@ -82,18 +117,21 @@ jobs:
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
-          
+
+          # 从 GITHUB_ENV 获取上一步生成的文件列表
           if [ -z "$FILES_TO_COMMIT_LIST" ]; then
             echo "上一步没有处理任何文件。无需提交。"
             exit 0
           fi
 
+          # 将字符串转换回 Bash 数组
           IFS=' ' read -r -a files_to_stage <<< "$FILES_TO_COMMIT_LIST"
+
           echo "待检查暂存的文件: ${files_to_stage[*]}"
           
           added_any_file=false
           for file in "${files_to_stage[@]}"; do
-            if [ -f "$file" ]; then
+            if [ -f "$file" ]; then # 确保文件存在
               git add "$file"
               echo "已将 $file 添加到暂存区。"
               added_any_file=true
@@ -103,10 +141,11 @@ jobs:
           done
 
           if ! $added_any_file; then
-            echo "没有文件实际被添加到暂存区。"
+            echo "没有文件实际被添加到暂存区 (例如，所有源都失败了，或者对现有的空文件没有更改)。"
             exit 0
           fi
           
+          # 检查是否有暂存的更改
           if git diff --staged --quiet; then
             echo "暂存的文件中没有实际更改需要提交。"
           else
