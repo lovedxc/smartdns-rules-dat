@@ -6,8 +6,8 @@ on:
     - cron: '0 3 * * *'
   workflow_dispatch: # 允许手动触发
 
-permissions: # <--- ADD THIS BLOCK
-  contents: write # Allows the GITHUB_TOKEN to write to the repository contents (push commits)
+permissions:
+  contents: write # 允许 GITHUB_TOKEN 写入仓库内容 (推送提交)
 
 jobs:
   fetch_and_process:
@@ -16,10 +16,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4 # 检出你自己的仓库，以便提交结果
-        # No need to explicitly pass token here if permissions are set globally/job-level
 
       - name: Fetch and process rules
-        id: process_rules # 给这个步骤一个id，方便后续步骤引用其输出（如果需要）
+        id: process_rules
         run: |
           # 定义输入URL和它们对应的输出文件名
           # 使用Bash关联数组 (declare -A)
@@ -38,14 +37,16 @@ jobs:
 
             echo "Processing: ${url}  -> ${output_filename}"
 
-            # 下载文件内容，去除 "full:"
+            # 下载文件内容，去除 "full:"，并且删除以 "regexp:" 开头的行
             # 使用 curl -fsSL:
-            # -f: fail silently on server errors (important for the 'if !' check)
-            # -s: silent mode
-            # -S: show error on stderr if -s is also used
-            # -L: follow redirects
-            if ! curl -fsSL "${url}" | sed 's/^full://' > "${tmp_processed_file}"; then
-              echo "Warning: Failed to download or initially process ${url}. Skipping this source."
+            # -f: 服务器错误时静默失败 (对 'if !' 检查很重要)
+            # -s: 静默模式
+            # -S: 如果同时使用 -s，则在 stderr 上显示错误
+            # -L: 跟随重定向
+            if ! curl -fsSL "${url}" | \
+                sed 's/^full://' | \
+                grep -v '^regexp:' > "${tmp_processed_file}"; then
+              echo "警告: 下载或处理 ${url} 失败。跳过此源。"
               rm -f "${tmp_processed_file}" # 清理不完整的临时文件
               continue # 继续处理下一个URL
             fi
@@ -53,11 +54,11 @@ jobs:
             # 如果下载和初步处理成功，且临时文件非空，则进行排序去重
             if [ -s "${tmp_processed_file}" ]; then
               sort -u "${tmp_processed_file}" > "${output_filename}"
-              echo "Processed rules saved to ${output_filename}"
-              echo "Total lines in ${output_filename}: $(wc -l < ${output_filename})"
+              echo "处理后的规则已保存到 ${output_filename}"
+              echo "${output_filename} 中的总行数: $(wc -l < ${output_filename})"
               PROCESSED_OUTPUT_FILES+=("${output_filename}")
             else
-              echo "Warning: Content for ${url} resulted in an empty file after processing. ${output_filename} will not be created or updated from this source."
+              echo "警告: ${url} 的内容在处理后为空文件。${output_filename} 不会从此源创建或更新。"
               # 如果你希望即使源为空也创建一个空的输出文件，取消下面这行的注释
               # > "${output_filename}"
               # PROCESSED_OUTPUT_FILES+=("${output_filename}") # 如果创建空文件也算作“已处理”
@@ -70,11 +71,11 @@ jobs:
           # 将成功处理并生成（或更新）的文件名列表传递给 GITHUB_ENV
           # 这样下一步就可以知道哪些文件需要被添加到git
           if [ ${#PROCESSED_OUTPUT_FILES[@]} -gt 0 ]; then
-            echo "Successfully processed files: ${PROCESSED_OUTPUT_FILES[*]}"
+            echo "成功处理的文件: ${PROCESSED_OUTPUT_FILES[*]}"
             # 将数组转换为一个空格分隔的字符串
             echo "FILES_TO_COMMIT_LIST=${PROCESSED_OUTPUT_FILES[*]}" >> $GITHUB_ENV
           else
-            echo "No files were successfully processed or updated."
+            echo "没有文件被成功处理或更新。"
             echo "FILES_TO_COMMIT_LIST=" >> $GITHUB_ENV
           fi
 
@@ -87,40 +88,40 @@ jobs:
           # FILES_TO_COMMIT_LIST 变量现在包含了所有实际被处理过的文件名
           
           if [ -z "$FILES_TO_COMMIT_LIST" ]; then
-            echo "No files were processed in the previous step. Nothing to commit."
+            echo "上一步没有处理任何文件。无需提交。"
             exit 0
           fi
 
           # 将字符串转换回 Bash 数组
           IFS=' ' read -r -a files_to_stage <<< "$FILES_TO_COMMIT_LIST"
 
-          echo "Files to check for staging: ${files_to_stage[*]}"
+          echo "待检查暂存的文件: ${files_to_stage[*]}"
           
           added_any_file=false
           for file in "${files_to_stage[@]}"; do
             if [ -f "$file" ]; then # 确保文件存在
               git add "$file"
-              echo "Added $file to staging area."
+              echo "已将 $file 添加到暂存区。"
               added_any_file=true
             else
-              echo "Warning: Expected file $file not found. Skipping add."
+              echo "警告: 预期的文件 $file 未找到。跳过添加。"
             fi
           done
 
           if ! $added_any_file; then
-            echo "No files were actually added to staging (e.g., all sources failed or resulted in no change to existing empty files)."
+            echo "没有文件实际被添加到暂存区 (例如，所有源都失败了，或者对现有的空文件没有更改)。"
             exit 0
           fi
           
           # 检查是否有暂存的更改
           if git diff --staged --quiet; then
-            echo "No actual changes to commit in the staged files."
+            echo "暂存的文件中没有实际更改需要提交。"
           else
             changed_files_names=$(git diff --staged --name-only | tr '\n' ' ' | sed 's/ $//')
-            echo "Changes detected in: $changed_files_names. Committing..."
+            echo "在以下文件中检测到更改: $changed_files_names. 正在提交..."
             git commit -m "Update SmartDNS rules (Automated): $changed_files_names"
             git push
           fi
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # This is good practice but often redundant if permissions are set correctly
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # FILES_TO_COMMIT_LIST 将由上一步通过 GITHUB_ENV 注入
