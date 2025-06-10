@@ -24,115 +24,138 @@ jobs:
           declare -A RULE_SOURCES
           RULE_SOURCES["https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/proxy-list.txt"]="smartdns_proxy_rules.txt"
           RULE_SOURCES["https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/direct-list.txt"]="smartdns_direct_rules.txt"
-          # 如果有更多源，可以继续添加:
-          # RULE_SOURCES["ANOTHER_URL"]="another_output.txt"
 
-          # 存储实际被处理并可能发生更改的文件名
           PROCESSED_OUTPUT_FILES=()
-          DOMAIN_TO_FORCE_DIRECT="services.googleapis.cn" # 定义要特殊处理的域名
+          DOMAIN_TO_FORCE_DIRECT="services.googleapis.cn"
 
           for url in "${!RULE_SOURCES[@]}"; do
             output_filename="${RULE_SOURCES[$url]}"
-            tmp_processed_file="tmp_${output_filename}" # 临时文件用于处理
+            tmp_processed_file="tmp_${output_filename}"
 
             echo "Processing: ${url}  -> ${output_filename}"
 
-            # 下载文件内容，移除CR (回车符)，去除 "full:"，并且删除以 "regexp:" 开头的行
-            # 使用 curl -fsSL:
-            # -f: 服务器错误时静默失败 (对 'if !' 检查很重要)
-            # -s: 静默模式
-            # -S: 如果同时使用 -s，则在 stderr 上显示错误
-            # -L: 跟随重定向
+            # 1. Download, convert line endings, remove 'full:', remove 'regexp:' lines
             if ! curl -fsSL "${url}" | \
-                # 新增：移除可能存在的CR，将CRLF转为LF
+                # Convert CRLF to LF
                 sed 's/\r$//' | \
                 sed 's/^full://' | \
                 grep -v '^regexp:' > "${tmp_processed_file}"; then
-              echo "警告: 下载或处理 ${url} 失败。跳过此源。"
-              rm -f "${tmp_processed_file}" # 清理不完整的临时文件
-              continue # 继续处理下一个URL
+              echo "警告: 下载或初步处理 ${url} 失败。跳过此源。"
+              rm -f "${tmp_processed_file}"
+              continue
             fi
 
-            # DEBUG: 检查特定域名在初步处理后是否存在
-            echo "DEBUG: Checking for '${DOMAIN_TO_FORCE_DIRECT}' in '${tmp_processed_file}' after initial download & sed/grep processing:"
-            if grep -qF "^${DOMAIN_TO_FORCE_DIRECT}$" "${tmp_processed_file}"; then
-              echo "DEBUG: '${DOMAIN_TO_FORCE_DIRECT}' IS FOUND in '${tmp_processed_file}' before custom logic."
+            # 2. Trim leading/trailing whitespace from all lines and remove any resulting empty lines
+            if [ -s "${tmp_processed_file}" ]; then # Only process if file has content
+              echo "DEBUG: Trimming whitespace and removing empty lines from '${tmp_processed_file}'."
+              mv "${tmp_processed_file}" "${tmp_processed_file}.untrimmed"
+              # Trim leading/trailing whitespace, then remove any lines that became empty
+              sed 's/^[[:space:]]*//; s/[[:space:]]*$//' "${tmp_processed_file}.untrimmed" | grep -v '^$' > "${tmp_processed_file}"
+              # If the result is an empty file, but original was not, it means all lines were whitespace or became empty
+              if [ ! -s "${tmp_processed_file}" ] && [ -s "${tmp_processed_file}.untrimmed" ]; then
+                  echo "DEBUG: After trimming, '${tmp_processed_file}' became empty. Original content was likely all whitespace or lines that became empty."
+              fi
+              rm -f "${tmp_processed_file}.untrimmed"
             else
-              echo "DEBUG: '${DOMAIN_TO_FORCE_DIRECT}' IS NOT FOUND in '${tmp_processed_file}' before custom logic. This might be an issue if it's expected."
+              echo "DEBUG: '${tmp_processed_file}' was empty or did not exist before whitespace trimming step. Skipping trimming."
             fi
 
-            # --- 开始自定义规则调整 ---
+            # 3. DEBUG: Check for the specific domain after initial processing AND TRIMMING
+            echo "DEBUG: Checking for '${DOMAIN_TO_FORCE_DIRECT}' in TRIMMED '${tmp_processed_file}' before custom logic:"
+            if grep -qF "^${DOMAIN_TO_FORCE_DIRECT}$" "${tmp_processed_file}"; then
+              echo "DEBUG: '${DOMAIN_TO_FORCE_DIRECT}' IS FOUND in TRIMMED '${tmp_processed_file}' before custom logic."
+            else
+              echo "DEBUG: '${DOMAIN_TO_FORCE_DIRECT}' IS NOT FOUND (exact match ^...$) in TRIMMED '${tmp_processed_file}' before custom logic."
+              echo "DEBUG: Searching for '${DOMAIN_TO_FORCE_DIRECT}' as a substring in TRIMMED '${tmp_processed_file}' (showing special chars for up to 5 matches):"
+              grep -F "${DOMAIN_TO_FORCE_DIRECT}" "${tmp_processed_file}" | cat -vet | head -n 5 || echo "DEBUG: Substring '${DOMAIN_TO_FORCE_DIRECT}' also not found."
+            fi
+
+            # 4. --- 开始自定义规则调整 ---
             if [ "${output_filename}" == "smartdns_proxy_rules.txt" ]; then
               echo "Attempting to remove '${DOMAIN_TO_FORCE_DIRECT}' from '${tmp_processed_file}' (for proxy list)..."
+              
+              echo "DEBUG: Content of '${tmp_processed_file}' that *should* contain '${DOMAIN_TO_FORCE_DIRECT}' for removal (showing special chars):"
+              grep -F "${DOMAIN_TO_FORCE_DIRECT}" "${tmp_processed_file}" | cat -vet | head -n 5 || echo "DEBUG: For proxy list, '${DOMAIN_TO_FORCE_DIRECT}' not found by grep -F for cat -vet prior to removal attempt."
+
               lines_before_removal=$(wc -l < "${tmp_processed_file}")
               
-              grep -vF "^${DOMAIN_TO_FORCE_DIRECT}$" "${tmp_processed_file}" > "${tmp_processed_file}.mod"
-              mv "${tmp_processed_file}.mod" "${tmp_processed_file}"
+              tmp_mod_file_for_removal="${tmp_processed_file}.removing"
+              grep -vF "^${DOMAIN_TO_FORCE_DIRECT}$" "${tmp_processed_file}" > "${tmp_mod_file_for_removal}"
               
+              lines_in_mod_file=$(wc -l < "${tmp_mod_file_for_removal}")
+
+              if [ "$lines_in_mod_file" -lt "$lines_before_removal" ]; then
+                echo "DEBUG: grep -vF removed lines. Mod file: $lines_in_mod_file lines, Original temp: $lines_before_removal lines."
+              else
+                echo "DEBUG: grep -vF did NOT remove lines. Mod file: $lines_in_mod_file lines, Original temp: $lines_before_removal lines. Domain might not have matched '^...$' or was not present as expected."
+              fi
+              mv "${tmp_mod_file_for_removal}" "${tmp_processed_file}"
+                            
               lines_after_removal=$(wc -l < "${tmp_processed_file}")
-              echo "DEBUG: Lines in '${tmp_processed_file}' for proxy. Before removal: ${lines_before_removal}. After removal attempt: ${lines_after_removal}."
+              echo "DEBUG: Lines in '${tmp_processed_file}' for proxy. Before removal logic: ${lines_before_removal}. After removal attempt: ${lines_after_removal}."
 
               if grep -qF "^${DOMAIN_TO_FORCE_DIRECT}$" "${tmp_processed_file}"; then
-                echo "ERROR: '${DOMAIN_TO_FORCE_DIRECT}' IS STILL FOUND in '${tmp_processed_file}' after removal attempt for proxy list! Please check logs and file contents."
+                echo "ERROR: '${DOMAIN_TO_FORCE_DIRECT}' IS STILL FOUND (exact match ^...$) in '${tmp_processed_file}' after removal attempt for proxy list!"
+                echo "DEBUG: First 5 lines of '${tmp_processed_file}' containing the domain (showing special chars):"
+                grep -F "${DOMAIN_TO_FORCE_DIRECT}" "${tmp_processed_file}" | cat -vet | head -n 5
               else
-                echo "DEBUG: '${DOMAIN_TO_FORCE_DIRECT}' successfully removed or was not present after removal attempt in '${tmp_processed_file}' for proxy list."
+                echo "DEBUG: '${DOMAIN_TO_FORCE_DIRECT}' successfully removed or was not present (exact match ^...$) after removal attempt in '${tmp_processed_file}' for proxy list."
               fi
             fi
 
             if [ "${output_filename}" == "smartdns_direct_rules.txt" ]; then
               echo "Ensuring '${DOMAIN_TO_FORCE_DIRECT}' is in '${tmp_processed_file}' (for direct list)..."
+              # Add if not present (exact match). sort -u will handle duplicates if already present.
               if ! grep -qF "^${DOMAIN_TO_FORCE_DIRECT}$" "${tmp_processed_file}"; then
                 echo "${DOMAIN_TO_FORCE_DIRECT}" >> "${tmp_processed_file}"
                 echo "DEBUG: Added '${DOMAIN_TO_FORCE_DIRECT}' to '${tmp_processed_file}' for direct list."
               else
-                echo "DEBUG: '${DOMAIN_TO_FORCE_DIRECT}' was already present in '${tmp_processed_file}' for direct list (before sort -u)."
+                echo "DEBUG: '${DOMAIN_TO_FORCE_DIRECT}' (exact match ^...$) was already present in '${tmp_processed_file}' for direct list."
               fi
             fi
             # --- 结束自定义规则调整 ---
 
-            # 如果下载和初步处理成功，且临时文件非空，则进行排序去重
+            # 5. Sort and finalize
             if [ -s "${tmp_processed_file}" ]; then
               sort -u "${tmp_processed_file}" > "${output_filename}"
               echo "处理后的规则已保存到 ${output_filename}"
               echo "${output_filename} 中的总行数: $(wc -l < ${output_filename})"
               PROCESSED_OUTPUT_FILES+=("${output_filename}")
             else
-              echo "警告: ${url} 的内容在处理后为空文件。${output_filename} 不会从此源创建或更新。"
+              echo "警告: '${tmp_processed_file}' (for ${output_filename}) is empty before final sort. ${output_filename} will be empty or not updated."
+              # If you want to ensure an empty file is created even if the source was empty or processing made it empty:
+              # > "${output_filename}"
+              # PROCESSED_OUTPUT_FILES+=("${output_filename}")
             fi
 
-            # 清理临时文件
             rm -f "${tmp_processed_file}"
           done
 
-          # 将成功处理并生成（或更新）的文件名列表传递给 GITHUB_ENV
           if [ ${#PROCESSED_OUTPUT_FILES[@]} -gt 0 ]; then
             echo "成功处理的文件: ${PROCESSED_OUTPUT_FILES[*]}"
-            # 将数组转换为一个空格分隔的字符串
             echo "FILES_TO_COMMIT_LIST=${PROCESSED_OUTPUT_FILES[*]}" >> $GITHUB_ENV
           else
             echo "没有文件被成功处理或更新。"
-            echo "FILES_TO_COMMIT_LIST=" >> $GITHUB_ENV
+            echo "FILES_TO_COMMIT_LIsT=" >> $GITHUB_ENV
           fi
 
       - name: Commit and push changes
+        # ... (this part remains the same)
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
 
-          # 从 GITHUB_ENV 获取上一步生成的文件列表
           if [ -z "$FILES_TO_COMMIT_LIST" ]; then
             echo "上一步没有处理任何文件。无需提交。"
             exit 0
           fi
 
-          # 将字符串转换回 Bash 数组
           IFS=' ' read -r -a files_to_stage <<< "$FILES_TO_COMMIT_LIST"
-
           echo "待检查暂存的文件: ${files_to_stage[*]}"
           
           added_any_file=false
           for file in "${files_to_stage[@]}"; do
-            if [ -f "$file" ]; then # 确保文件存在
+            if [ -f "$file" ]; then
               git add "$file"
               echo "已将 $file 添加到暂存区。"
               added_any_file=true
@@ -142,11 +165,10 @@ jobs:
           done
 
           if ! $added_any_file; then
-            echo "没有文件实际被添加到暂存区 (例如，所有源都失败了，或者对现有的空文件没有更改)。"
+            echo "没有文件实际被添加到暂存区。"
             exit 0
           fi
           
-          # 检查是否有暂存的更改
           if git diff --staged --quiet; then
             echo "暂存的文件中没有实际更改需要提交。"
           else
