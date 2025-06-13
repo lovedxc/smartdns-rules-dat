@@ -7062,6 +7062,7 @@ cpj.org
 cppe.ac.uk
 cppr.ac.uk
 cptt.ac.uk
+cpu-monkey.com
 cpz.to
 cq99.us
 cqcorea.com
@@ -13936,7 +13937,6 @@ hw.ac.uk
 hwadzan.tw
 hwayue.org.tw
 hwgo.com
-hwinfo.com
 hwlc.ac.uk
 hwlln.ac.uk
 hwslabs.com
