@@ -6548,7 +6548,6 @@ dengeamerika.com
 dengekionline.com
 dengiamerika.com
 deno.com
-deno.dev
 deno.land
 dentalhypotheses.com
 dependabot.com
@@ -9933,6 +9932,7 @@ gfsale.com
 gfw.press
 gfw.report
 gfwatch.org
+gfwbao.com
 gfx.ms
 gfycat.com
 gfysex.com
@@ -21444,6 +21444,7 @@ steamcontent.com
 steamdb.info
 steamdeck.com
 steamgames.com
+steamladder.com
 steammobile.akamaized.net
 steamofporn.com
 steampipe-kr.akamaized.net
