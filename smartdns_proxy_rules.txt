@@ -2760,6 +2760,7 @@ azureserviceprofiler.com
 azuresmartspaces.net
 azurestackvalidation.com
 azurewebsites.net
+b-cdn.net
 b-eroland.net
 b-ok.africa
 b-ok.asia
@@ -4579,6 +4580,8 @@ bumptop.org
 bumptunes.com
 bunbunhk.com
 bunka.go.jp
+bunny.net
+bunnycdn.com
 bunnylust.com
 burningcamel.com
 burstly.net
