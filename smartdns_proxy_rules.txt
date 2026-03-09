@@ -5005,7 +5005,6 @@ cdn-tinkoff.ru
 cdn-vk.ru
 cdn.arstechnica.net
 cdn.js7k.com
-cdn.jsdelivr.net
 cdn.printfriendly.com
 cdn.seatguru.com
 cdn.softlayer.net
@@ -7197,6 +7196,7 @@ dynamics.com
 dynamobuilds.com
 dynamopackages.com
 dynamoreach.com
+dynatrace.com
 dynawebinc.com
 dyncdn.me
 dynu.com
@@ -8263,6 +8263,7 @@ familymart.com.ph
 familypies.net
 familyporn.tv
 familypornhd.com
+familysearch.org
 familysexsimulator.com
 familysimulator.com
 familysimulator.io
@@ -19608,6 +19609,7 @@ shishijump001.com
 shit-porn.net
 shithd.com
 shitjav.com
+shitjournal.org
 shittytube.com
 shixiao.org
 shizhao.org
