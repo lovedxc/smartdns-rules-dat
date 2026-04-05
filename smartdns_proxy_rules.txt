@@ -7863,6 +7863,7 @@ esg.t91y.com
 eskimotube.com
 eslite.com
 esm.run
+esm.sh
 esmarthealth.com
 esmatube.com
 esopworld.com
@@ -17567,6 +17568,7 @@ pjbyj.top
 pjful-app.lol
 pjgirls.com
 pjsekai.sega.jp
+pkgbuild.com
 pki-post.ch
 pki-posta.ch
 pki-poste.ch
@@ -23856,6 +23858,7 @@ wrenchead.com
 writesonic.com
 ws-blau.com
 ws-tcg.com
+ws.audioscrobbler.com
 wsj.com
 wsj.jobs
 wsj.net
