@@ -5830,6 +5830,7 @@ crabporn.com
 crackle.com
 craigslist.org
 crankplayer.com
+crashlytics.com
 crates.io
 crazy-amateurs.com
 crazyav.xyz
@@ -8666,7 +8667,6 @@ finlitsummit.org
 fiotolia.com
 fire-emblem-heroes.com
 firearmsworld.net
-firebase-settings.crashlytics.com
 firebase.com
 firebase.google.com
 firebase.googleapis.com
@@ -22341,7 +22341,6 @@ uoherald.com
 up.audio
 up01.cc
 upbit.com
-update.crashlytics.com
 updatetube.com
 upfrontcfd.com
 upfrontfea.com
