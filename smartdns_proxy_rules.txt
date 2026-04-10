@@ -1750,11 +1750,9 @@ anistreaming.xyz
 ankarazirvesi2018.com
 anm.co.uk
 annamilk.com
-annas-archive.in
-annas-archive.li
-annas-archive.org
-annas-archive.pm
-annas-archive.se
+annas-archive.gd
+annas-archive.gl
+annas-archive.pk
 annstores.net
 annualpelvicexam.com
 annualreviews.org
@@ -4700,6 +4698,7 @@ c2cx.com
 c3pool.com
 c4rex.co
 c4slive.com
+cabconnect.org
 cableav.tv
 cableav.xyz
 cablegatesearch.net
@@ -4799,6 +4798,7 @@ canada-beatsbydre.com
 candidforum-videos.com
 candycumcity.com
 candypleasure.com
+canny.io
 canon
 canon-cee.com
 canon-cmos-sensors.com
@@ -7042,6 +7042,7 @@ dreprobeats.com
 dreprofy.com
 drgan.net
 dribbble.com
+driveawaytaxi.org
 driverxxx.com
 drivevideo.xyz
 driving.co.uk
@@ -7713,6 +7714,9 @@ entrust.cn
 entrust.com
 entrust.net
 entrustdatacard.com
+envato-static.com
+envato.com
+envatousercontent.com
 eotarchive.org
 epc-de-agent-proxy.germanywestcentral.cloudapp.azure.com
 epicbrowser.com
@@ -9849,6 +9853,7 @@ gofuckmenow.com
 gofundme.com
 gog-statics.com
 gog.com
+gogettaxi.org
 gogle.com
 gogo-load.com
 gogoanime.vc
@@ -10217,6 +10222,7 @@ gotquestions.org
 gotraffic.net
 gotrusted.com
 gotw.ca
+goup.ai
 gouri.xyz
 gov.ir
 gov.taipei
@@ -10474,6 +10480,7 @@ hayabusa.io
 hayabusa.media
 hayday.com
 haydaygame.com
+hayya.ae
 hbabit.com
 hbfile.net
 hbg.com
@@ -12862,6 +12869,21 @@ jiuse6666.com
 jiuse821.com
 jiuse822.com
 jiuse823.com
+jivo.chat
+jivo.ru
+jivochat.co.in
+jivochat.co.za
+jivochat.com
+jivochat.com.br
+jivochat.com.co
+jivochat.com.pe
+jivochat.com.tr
+jivochat.de
+jivochat.es
+jivochat.ng
+jivochat.ru
+jivosite.com
+jivosite.ru
 jiyou520.com
 jiyu-kobo.co.jp
 jizzboom.com
@@ -15446,6 +15468,7 @@ mxshm.site
 my-enema.com
 my-formosa.com
 my-magazine.me
+my-manager-account.com
 my-private-network.co.uk
 my.pcloud.com
 my13la.com
@@ -16385,6 +16408,7 @@ ntp.ring.gr.jp
 ntp.ripe.net
 ntp.se
 ntp.t.ring.gr.jp
+ntp.time.nl
 ntp.tohoku.ac.jp
 ntp.tut.ac.jp
 ntp.ubuntu.com
@@ -16395,6 +16419,7 @@ ntp1.jst.mfeed.ad.jp
 ntp1.ntp-servers.net
 ntp1.plala.or.jp
 ntp1.ring.gr.jp
+ntp1.time.nl
 ntp1.tohoku.ac.jp
 ntp1.v6.mfeed.ad.jp
 ntp1.wakwak.com
@@ -16402,6 +16427,7 @@ ntp2.jst.mfeed.ad.jp
 ntp2.ntp-servers.net
 ntp2.plala.or.jp
 ntp2.ring.gr.jp
+ntp2.time.nl
 ntp2.tohoku.ac.jp
 ntp2.v6.mfeed.ad.jp
 ntp2.wakwak.com
@@ -16412,6 +16438,8 @@ ntp4.ntp-servers.net
 ntp5.ntp-servers.net
 ntp6.ntp-servers.net
 ntp7.ntp-servers.net
+ntppool1.time.nl
+ntppool2.time.nl
 ntten-mg.buzz
 nu-bay.com
 nu36.vip
@@ -20885,6 +20913,7 @@ supervpn.net
 superzooi.com
 supjav.com
 supplybestjerseys.com
+support-uber.com
 supportfacebook.com
 supremacy.com
 supremacy.net
@@ -21101,7 +21130,10 @@ taweet.com
 tawny-peaks.com
 taxel.media
 taxi69.com
+taxiaid.org
 taxidrivermovie.com
+taxiguru.org
+taxitax.org
 taylorandfrancis.com
 taylorfrancis.com
 tbank-online.com
@@ -21138,7 +21170,6 @@ technogym.ru
 technogym.su
 technologyandsociety.org
 techradar.com
-techspot.com
 techstreet.com
 techtimes.com
 techtudo.com
@@ -21192,7 +21223,6 @@ telegram.me
 telegram.org
 telegram.space
 telegramdownload.com
-telegraph.co.uk
 telekom.com
 telekom.de
 telesco.pe
@@ -21377,6 +21407,7 @@ thelittleslush.com
 theman.in
 themarvelexperiencetour.com
 themathsfactor.com
+themeforest.net
 themercury.com.au
 themessengeradelaide.com.au
 themilfmovies.com
@@ -22431,6 +22462,7 @@ uverse.com
 uvwxyz.xyz
 uwants.com
 uwpcommunitytoolkit.com
+uxthemes.com
 uyghur-j.org
 uyghuraa.org
 uyghuramerican.org
@@ -24847,9 +24879,23 @@ yandex.uz
 yandexadexchange.net
 yandexcloud.net
 yandexcom.net
+yandexgo.com
 yandexlyceum.ru
 yandexwebcache.net
 yandexwebcache.org
+yango-b2b.com
+yango-team.com
+yango-tech.com
+yango.africa
+yango.ao
+yango.bh
+yango.co.il
+yango.com
+yango.fi
+yango.qa
+yango.taxi
+yango.tech
+yangofellowship.com
 yangzhi.app
 yangzhi.org
 yantaqu.com
